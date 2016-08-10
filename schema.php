@@ -12,6 +12,7 @@ if (!empty($argv)) {
     // Exclude file path
     array_shift($argv);
     // Use three first arguments to instanciate PDO (dsn, username, password)
+    var_dump($argv);
     $pdo = new PDO(array_shift($argv), array_shift($argv), array_shift($argv));
     // Create instance of converter
     $sql_schema = new SQL_Schema($pdo);
@@ -45,7 +46,7 @@ class SQL_Schema
         // Check file
         if (file_exists($file)
             // Get JSON string
-            && ($json = file_get_contents($schema_file))
+            && ($json = file_get_contents($file))
             // Decode JSON
             && ($schema = json_decode($json))
         ) {
@@ -79,7 +80,7 @@ class SQL_Schema
         return;
     }
 
-    private function create_reference($table, $name)
+    private function create_reference($property)
     {
         // Check for reference
         if (property_exists($property, '$ref')
@@ -98,7 +99,7 @@ class SQL_Schema
             // Decode JSON
             $ref = json_decode($json);
             // Merge properties, current > fetched
-            $property = merge_recursive_distinct($ref, $property);
+            $property = self::merge_recursive_distinct($ref, $property);
             // Create fetched object table (recursive)
             $this->create_table($property, $name);
             // Record SQL relation table
@@ -125,7 +126,7 @@ class SQL_Schema
         );
         $properties = property_exists($schema, 'properties')
             // Merge properties, current > default
-            ? merge_recursive_distinct($default_properties, $schema->properties)
+            ? self::merge_recursive_distinct($default_properties, $schema->properties)
             : $default_properties;
 
         // Required fields
@@ -144,7 +145,7 @@ class SQL_Schema
             // Deep conversion to object
             $property = json_decode(json_encode($property));
             // Check if reference
-            if (create_reference($property)) {
+            if ($this->create_reference($property)) {
                 // All sorted out, next !
                 return;
             }
@@ -231,5 +232,30 @@ class SQL_Schema
         return empty($comment)
             ? null
             : $this->pdo->quote(implode(' - ', $comment));
+    }
+
+    public static function merge_recursive_distinct()
+    {
+        $arrays = func_get_args();
+        $merged = array_shift($arrays);
+        if ($return_object = is_object($merged)) {
+            $merged = json_decode(json_encode($merged), true);
+        }
+        foreach ($arrays as $array) {
+            if (is_object($array)) {
+                $array = json_decode(json_encode($array), true);
+            }
+            foreach ($array as $key => $value) {
+                if (is_array($value) && isset($merged[$key]) && is_array($merged[$key])) {
+                    $merged[$key] = self::merge_recursive_distinct($merged[$key], $value);
+                } else {
+                    $merged[$key] = $value;
+                }
+            }
+        }
+
+        return $return_object
+            ? json_decode(json_encode($merged), false)
+            : $merged;
     }
 }
