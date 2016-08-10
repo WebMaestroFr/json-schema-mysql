@@ -3,24 +3,21 @@
  * JSON Schema MySQL database builder.
  *
  * Create MySQL tables from JSON Schema files.
+ * php -q /json-schema-mysql/schema.php "mysql:dbname=database;host=localhost;port=3306" "username" "password" "/schemas"
  *
  * @author Étienne BAUDRY  <etienne@webmaestro.fr>
  */
 
 // Check if shell arguments are given
-if (!empty($argv)) {
-    // Exclude file path
+if (!empty($argv) && count($argv) === 5) {
+    // Exclude first file path argument
     array_shift($argv);
-    // Use three first arguments to instanciate PDO (dsn, username, password)
-    var_dump($argv);
+    // Use three next arguments to instanciate PDO (dsn, username, password)
     $pdo = new PDO(array_shift($argv), array_shift($argv), array_shift($argv));
     // Create instance of converter
     $sql_schema = new SQL_Schema($pdo);
-    // For each following arguments (schema.json, ...)
-    foreach ($argv as $file) {
-        // Create MySQL table (if not exists)
-        $sql_schema->create_table_from_file($file);
-    }
+    // Following argument as source directory
+    $sql_schema->create_tables_from_dir(array_shift($argv));
 }
 
 class SQL_Schema
@@ -35,6 +32,18 @@ class SQL_Schema
     {
         // Set PDO Instance
         $this->pdo = $pdo;
+    }
+
+    public function create_tables_from_dir($directory)
+    {
+        if (is_dir($directory)) {
+            $this->dirname = dirname($directory);
+            $schema_files = glob(rtrim($directory, '/').'/*.json');
+            foreach ($schema_files as $file) {
+                // Create MySQL table (if not exists)
+                $this->create_table_from_file($file);
+            }
+        }
     }
 
     public function create_table_from_file($file, $name = null)
@@ -57,6 +66,10 @@ class SQL_Schema
 
     public function create_table($schema, $name)
     {
+        if (property_exists($schema, 'type') && 'object' !== $schema->type) {
+            // Only object type should be creating tables
+            return;
+        }
         // Open a reference record
         $this->references[$name] = array();
         // Get SQL columns definitions
@@ -83,6 +96,8 @@ class SQL_Schema
         // Check for reference
         if (property_exists($property, '$ref')
             && ((filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)
+                    // Default name is file basename
+                    && ($name = basename($property->{'$ref'}, '.json'))
                     // If remote, fetch raw URL
                     && ($json = file_get_contents($property->{'$ref'}))
                 ) || (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'}, $matches)
@@ -105,6 +120,7 @@ class SQL_Schema
                 ."{$table}_id INTEGER NOT NULL, "
                 ."{$name}_id INTEGER NOT NULL, "
                 ."PRIMARY KEY ({$table}_id, {$name}_id), "
+                ."INDEX ({$table}_id), "
                 ."FOREIGN KEY ({$table}_id) REFERENCES {$table}(id) ON DELETE CASCADE, "
                 ."FOREIGN KEY ({$name}_id) REFERENCES {$name}(id) ON DELETE CASCADE"
             .')';
