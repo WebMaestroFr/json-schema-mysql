@@ -19,7 +19,7 @@ if (!empty($argv)) {
     // For each following arguments (schema.json, ...)
     foreach ($argv as $file) {
         // Create MySQL table (if not exists)
-        $sql_schema->create_table($file);
+        $sql_schema->create_table_from_file($file);
     }
 }
 
@@ -28,8 +28,8 @@ class SQL_Schema
     private $pdo,
         // Record of relations between tables
         $references = array(),
-        // Record of relative paths
-        $dirnames = array();
+        // Record of file path
+        $dirname = '';
 
     public function __construct($pdo)
     {
@@ -37,12 +37,13 @@ class SQL_Schema
         $this->pdo = $pdo;
     }
 
-    public function create_table($file, $name = null)
+    public function create_table_from_file($file, $name = null)
     {
         if (null === $name) {
             // Default name to file basename
             $name = basename($file, '.json');
         }
+        $this->dirname = dirname($file);
         // Check file
         if (file_exists($file)
             // Get JSON string
@@ -50,37 +51,34 @@ class SQL_Schema
             // Decode JSON
             && ($schema = json_decode($json))
         ) {
-            // Add dirname to the record
-            $this->dirnames[$name] = dirname($file);
-            // Open a reference record
-            $this->references[$name] = array();
-            // Get SQL columns definitions
-            $definitions = $this->get_definitions($name, $schema);
-            // Start query string
-            $sql = "CREATE TABLE IF NOT EXISTS {$name} ("
-                // Add columns
-.implode(', ', $definitions)
-            // Close
-.')';
-            // Add comment if any title/description
-            if ($comment = $this->get_comment($schema)) {
-                $sql .= " COMMENT {$comment}";
-            }
-            // Execute SQL
-            $this->pdo->exec($sql);
-            // If any reference was recorded...
-            foreach ($this->references[$name] as $sql) {
-                // ... execute SQL to create relation table
-                $this->pdo->exec($sql);
-            }
-            // Return schema object
-            return $schema;
+            $this->create_table($schema, $name);
         }
-
-        return;
     }
 
-    private function create_reference($property)
+    public function create_table($schema, $name)
+    {
+        // Open a reference record
+        $this->references[$name] = array();
+        // Get SQL columns definitions
+        $definitions = $this->get_definitions($schema, $name);
+        // Start query string
+        $sql = "CREATE TABLE IF NOT EXISTS {$name} (".implode(', ', $definitions).')';
+        // Add comment if any title/description
+        if ($comment = $this->get_comment($schema)) {
+            $sql .= " COMMENT {$comment}";
+        }
+        // Execute SQL
+        $this->pdo->exec($sql);
+        // If any reference was recorded...
+        foreach ($this->references[$name] as $sql) {
+            // ... execute SQL to create relation table
+            $this->pdo->exec($sql);
+        }
+        // Return schema object
+        return $schema;
+    }
+
+    private function create_reference($table, $name, $property)
     {
         // Check for reference
         if (property_exists($property, '$ref')
@@ -88,20 +86,20 @@ class SQL_Schema
                     // If remote, fetch raw URL
                     && ($json = file_get_contents($property->{'$ref'}))
                 ) || (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'}, $matches)
-                    // If local file, fetch relative from dirname
-                    && ($file = "{$this->dirnames[$name]}/{$property->{'$ref'}}")
-                    && (file_exists($file))
-                    && ($json = file_get_contents($file))
                     // Default name is file basename
                     && ($name = $matches[1])
+                    // If local file, fetch relative from dirname
+                    && ($file = "{$this->dirname}/{$property->{'$ref'}}")
+                    && (file_exists($file))
+                    && ($json = file_get_contents($file))
                 ))
         ) {
             // Decode JSON
             $ref = json_decode($json);
             // Merge properties, current > fetched
-            $property = self::merge_recursive_distinct($ref, $property);
+            $schema = self::merge_recursive_distinct($ref, $property);
             // Create fetched object table (recursive)
-            $this->create_table($property, $name);
+            $this->create_table($schema, $name);
             // Record SQL relation table
             $this->references[$table][] = "CREATE TABLE IF NOT EXISTS {$table}_{$name} ("
                 ."{$table}_id INTEGER NOT NULL, "
@@ -111,13 +109,13 @@ class SQL_Schema
                 ."FOREIGN KEY ({$name}_id) REFERENCES {$name}(id) ON DELETE CASCADE"
             .')';
             // Return current
-            return $property;
+            return $schema;
         }
 
         return;
     }
 
-    private function get_definitions($table_name, stdClass $schema)
+    private function get_definitions(stdClass $schema, $table_name)
     {
         // Default id and date columns
         $default_properties = array(
@@ -145,7 +143,7 @@ class SQL_Schema
             // Deep conversion to object
             $property = json_decode(json_encode($property));
             // Check if reference
-            if ($this->create_reference($property)) {
+            if ($this->create_reference($table_name, $name, $property)) {
                 // All sorted out, next !
                 return;
             }
