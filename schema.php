@@ -10,13 +10,13 @@
 
 // Check if shell arguments are given
 if (!empty($argv) && count($argv) === 5) {
-    // Exclude first file path argument
+    // Exclude first (file path) argument
     array_shift($argv);
-    // Use three next arguments to instanciate PDO (dsn, username, password)
+    // Use second (dsn), third (username) and fourth (password) arguments to instanciate PDO
     $pdo = new PDO(array_shift($argv), array_shift($argv), array_shift($argv));
     // Create instance of converter
     $sql_schema = new JSON_Schema_MySQL($pdo);
-    // Following argument as source directory
+    // Fifth and last argument as source directory
     $sql_schema->create_tables_from_dir(array_shift($argv));
 }
 
@@ -66,7 +66,7 @@ class JSON_Schema_MySQL
 
     public function create_table($schema, $name)
     {
-        if (property_exists($schema, 'type') && 'object' !== $schema->type) {
+        if (!property_exists($schema, 'type') || 'object' !== $schema->type) {
             // Only object type should be creating tables
             return;
         }
@@ -89,46 +89,6 @@ class JSON_Schema_MySQL
         }
         // Return schema object
         return $schema;
-    }
-
-    private function create_reference($table, $name, $property)
-    {
-        // Check for reference
-        if (property_exists($property, '$ref')
-            && ((filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)
-                    // Default name is file basename
-                    && ($name = basename($property->{'$ref'}, '.json'))
-                    // If remote, fetch raw URL
-                    && ($json = file_get_contents($property->{'$ref'}))
-                ) || (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'}, $matches)
-                    // Default name is file basename
-                    && ($name = $matches[1])
-                    // If local file, fetch relative from dirname
-                    && ($file = "{$this->dirname}/{$property->{'$ref'}}")
-                    && (file_exists($file))
-                    && ($json = file_get_contents($file))
-                ))
-        ) {
-            // Decode JSON
-            $ref = json_decode($json);
-            // Merge properties, current > fetched
-            $schema = self::merge_recursive_distinct($ref, $property);
-            // Create fetched object table (recursive)
-            $this->create_table($schema, $name);
-            // Record SQL relation table
-            $this->references[$table][] = "CREATE TABLE IF NOT EXISTS {$table}_{$name} ("
-                ."{$table}_id INTEGER NOT NULL, "
-                ."{$name}_id INTEGER NOT NULL, "
-                ."PRIMARY KEY ({$table}_id, {$name}_id), "
-                ."INDEX ({$table}_id), "
-                ."FOREIGN KEY ({$table}_id) REFERENCES {$table}(id) ON DELETE CASCADE, "
-                ."FOREIGN KEY ({$name}_id) REFERENCES {$name}(id) ON DELETE CASCADE"
-            .')';
-            // Return current
-            return $schema;
-        }
-
-        return;
     }
 
     private function get_definitions(stdClass $schema, $table_name)
@@ -197,6 +157,46 @@ class JSON_Schema_MySQL
             // Map column definition SQL
             return $sql;
         }, array_keys((array) $properties), (array) $properties));
+    }
+
+    private function create_reference($table, $name, $property)
+    {
+        // Check for reference
+        if (property_exists($property, '$ref')
+            && ((filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)
+                    // Default name is file basename
+                    && ($name = basename($property->{'$ref'}, '.json'))
+                    // If remote, fetch raw URL
+                    && ($json = file_get_contents($property->{'$ref'}))
+                ) || (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'}, $matches)
+                    // Default name is file basename
+                    && ($name = $matches[1])
+                    // If local file, fetch relative from dirname
+                    && ($file = "{$this->dirname}/{$property->{'$ref'}}")
+                    && (file_exists($file))
+                    && ($json = file_get_contents($file))
+                ))
+        ) {
+            // Decode JSON
+            $ref = json_decode($json);
+            // Merge properties, current > fetched
+            $schema = self::merge_recursive_distinct($ref, $property);
+            // Create fetched object table (recursive)
+            $this->create_table($schema, $name);
+            // Record SQL relation table
+            $this->references[$table][] = "CREATE TABLE IF NOT EXISTS {$table}_{$name} ("
+                ."{$table}_id INTEGER NOT NULL, "
+                ."{$name}_id INTEGER NOT NULL, "
+                ."PRIMARY KEY ({$table}_id, {$name}_id), "
+                ."INDEX ({$table}_id), "
+                ."FOREIGN KEY ({$table}_id) REFERENCES {$table}(id) ON DELETE CASCADE, "
+                ."FOREIGN KEY ({$name}_id) REFERENCES {$name}(id) ON DELETE CASCADE"
+            .')';
+            // Return current
+            return $schema;
+        }
+
+        return;
     }
 
     private function get_type($table_name, $property_name, stdClass $property)
