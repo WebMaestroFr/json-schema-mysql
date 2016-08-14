@@ -15,12 +15,12 @@ if (!empty($argv) && count($argv) === 5) {
     // Use three next arguments to instanciate PDO (dsn, username, password)
     $pdo = new PDO(array_shift($argv), array_shift($argv), array_shift($argv));
     // Create instance of converter
-    $sql_schema = new SQL_Schema($pdo);
+    $sql_schema = new JSON_Schema_MySQL($pdo);
     // Following argument as source directory
     $sql_schema->create_tables_from_dir(array_shift($argv));
 }
 
-class SQL_Schema
+class JSON_Schema_MySQL
 {
     private $pdo,
         // Record of relations between tables
