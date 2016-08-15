@@ -1,7 +1,7 @@
 # JSON Schema to MySQL Tables
 
 ## Shell
-`php -q /path/to/json-schema-mysql/json-schema-mysql.php "mysql:dbname=MyDB;host=localhost;port=3306" "user" "password" "/path/to/json/schema/directory"`
+`php -q /path/to/json-schema-mysql/json-schema-mysql.php "mysql:dbname=example;host=localhost;port=3306" "user" "password" "/path/to/json/schema/directory"`
 
 ## PHP
 ```

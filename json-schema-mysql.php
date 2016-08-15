@@ -16,7 +16,7 @@ if (!empty($argv) && count($argv) === 5) {
     $pdo = new PDO(array_shift($argv), array_shift($argv), array_shift($argv));
     // Create instance of converter
     $sql_schema = new JSON_Schema_MySQL($pdo);
-    // Fifth and last argument as source directory
+    // Fifth argument as source directory
     $sql_schema->create_tables_from_dir(array_shift($argv));
 }
 
@@ -37,7 +37,7 @@ class JSON_Schema_MySQL
     public function create_tables_from_dir($directory)
     {
         if (is_dir($directory)) {
-            $this->dirname = dirname($directory);
+            // $this->dirname = dirname($directory);
             $schema_files = glob(rtrim($directory, '/').'/*.json');
             foreach ($schema_files as $file) {
                 // Create MySQL table (if not exists)
