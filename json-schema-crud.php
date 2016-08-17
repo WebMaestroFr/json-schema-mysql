@@ -21,7 +21,6 @@ class Schema_Model_CRUD
         $valid = Schema_Model::validate($this->name, $data);
 
         $keys = implode(', ', array_keys($valid['data']));
-        var_dump($valid['data']);
         $values = implode(', ', $valid['data']);
 
         $query = "INSERT INTO {$this->name} ({$keys}) VALUES ({$values})";
@@ -182,10 +181,11 @@ class Schema_Model
 
                         return;
                     }
-                    $value = json_encode($value);
+
+                    return json_encode($value);
                 }
 
-                return self::$pdo->quote($value);
+                return $value;
             }, $keys, (array) $data);
             $data = array_filter(array_combine($keys, $values));
         }
@@ -193,13 +193,15 @@ class Schema_Model
         self::$validator->check($data, $schema);
 
         if (!self::$validator->isValid()) {
-            http_response_code(406);
-            header('Content-Type: application/json');
-            exit(json_encode(self::$validator->getErrors(), JSON_PRETTY_PRINT));
+            $errors = json_encode(self::$validator->getErrors(), JSON_PRETTY_PRINT);
+            throw new Exception($errors);
         }
 
         return array(
-            'data' => $data,
+            'data' => array_combine(
+                array_keys((array) $data),
+                array_map(array(self::$pdo, 'quote'), $data)
+            ),
             'references' => $references,
         );
     }
