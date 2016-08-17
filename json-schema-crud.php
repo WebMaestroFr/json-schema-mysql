@@ -1,6 +1,6 @@
 <?php
 
-class Model_CRUD
+class Schema_Model_CRUD
 {
     private $name;
 
@@ -16,22 +16,30 @@ class Model_CRUD
         return array_shift($results);
     }
 
-    public function create(array $data)
+    public function create($data)
     {
-        $keys = implode(', ', array_map('sanitize_key', array_keys($data)));
-        $values = implode(', ', array_map(array(Model::$pdo, 'quote'), $data));
+        $valid = Schema_Model::validate($this->name, $data);
+
+        $keys = implode(', ', array_keys($valid['data']));
+        var_dump($valid['data']);
+        $values = implode(', ', $valid['data']);
 
         $query = "INSERT INTO {$this->name} ({$keys}) VALUES ({$values})";
 
-        if (Model::$pdo->exec($query)) {
-            return $this(Model::$pdo->lastInsertId());
+        Schema_Model::$pdo->exec($query);
+        $id = (integer) Schema_Model::$pdo->lastInsertId();
+
+        foreach ($valid['references'] as $ref_name => $ref_data) {
+            Schema_Model::relation($this->name, $id, $ref_name, $ref_data);
         }
+
+        return $this($id);
     }
 
     public function read(array $where = array(), array $clauses = array())
     {
-        $keys = array_map('sanitize_key', array_keys($where));
-        $values = array_map(array(Model::$pdo, 'quote'), $where);
+        $keys = array_keys($where);
+        $values = array_map(array(Schema_Model::$pdo, 'quote'), $where);
 
         $query = "SELECT * FROM {$this->name}";
         if (!empty($where)) {
@@ -43,7 +51,7 @@ class Model_CRUD
 
         $order_by = empty($clauses['order_by'])
             ? 'date'
-            : sanitize_key($clauses['order_by']);
+            : $clauses['order_by'];
         $query .= " ORDER BY {$order_by} ";
         $query .= empty($clauses['order'])
             || 'd' === strtolower(substr($clauses['order'], 0, 1))
@@ -56,30 +64,36 @@ class Model_CRUD
         $query .= " LIMIT {$limit}";
 
         $offset = empty($clauses['offset'])
-            ? 0
+            ? empty($clauses['page'])
+                ? 0
+                : $limit * (integer) $clauses['page']
             : (integer) $clauses['offset'];
         $query .= " OFFSET {$offset}";
 
-        $statement = Model::$pdo->query($query);
+        $statement = Schema_Model::$pdo->query($query);
 
         return $statement->fetchAll(PDO::FETCH_OBJ);
     }
 
-    public function update($id, array $data = array())
+    public function update($id, $data)
     {
-        $keys = array_map('sanitize_key', array_keys($data));
-        $values = array_map(array(Model::$pdo, 'quote'), $data);
+        $valid = Schema_Model::validate($this->name, $data);
+
         $set = implode(', ', array_map(function ($key, $value) {
             return "{$key} = {$value}";
-        }, $keys, $values));
+        }, array_keys($valid['data']), $valid['data']));
 
         $where = 'id = '.(integer) $id;
 
         $query = "UPDATE {$this->name} SET {$set} WHERE {$where}";
 
-        if (Model::$pdo->exec($query)) {
-            return $this($id);
+        Schema_Model::$pdo->exec($query);
+
+        foreach ($valid['references'] as $ref_name => $ref_data) {
+            Schema_Model::relation($this->name, (integer) $id, $ref_name, $ref_data);
         }
+
+        return $this($id);
     }
 
     public function delete($id)
@@ -88,19 +102,23 @@ class Model_CRUD
 
         $query = "DELETE FROM {$this->name} WHERE {$where}";
 
-        return Model::$pdo->exec($query);
+        return Schema_Model::$pdo->exec($query);
     }
 }
 
-class Model
+class Schema_Model
 {
     public static $pdo;
-    private static $tables = array();
+    private static $directory,
+        $schemas = array(),
+        $tables = array(),
+        $validator;
 
-    public function __construct($pdo)
+    public function __construct($pdo, $directory)
     {
         // Set PDO Instance
-        $this->pdo = $pdo;
+        self::$pdo = $pdo;
+        self::$directory = rtrim($directory, '/');
     }
 
     public function __call($name, $args)
@@ -112,11 +130,77 @@ class Model
 
     public function __get($name)
     {
-        $name = sanitize_key($name);
+        return self::get_crud($name);
+    }
+
+    private static function get_crud($name)
+    {
         if (empty(self::$tables[$name])) {
-            self::$tables[$name] = new Model_CRUD($name);
+            self::$tables[$name] = new Schema_Model_CRUD($name);
         }
 
         return self::$tables[$name];
+    }
+
+    public static function relation($table, $id, $ref_name, $ref_data)
+    {
+        $crud = self::get_crud($ref_name);
+        $reference = empty($ref_data->id)
+            ? $crud->create($ref_data)
+            : $crud->update($ref_data->id, $ref_data);
+
+        $query = "INSERT INTO {$table}_{$ref_name} ({$table}_id, {$ref_name}_id)"
+            ." VALUES ({$id}, {$reference->id})"
+            ." ON DUPLICATE KEY UPDATE {$table}_id={$table}_id";
+        self::$pdo->exec($query);
+    }
+
+    public static function validate($name, $data)
+    {
+        if (empty(self::$validator)) {
+            require_once 'vendor/autoload.php';
+            self::$validator = new JsonSchema\Validator();
+        }
+
+        if (empty(self::$schemas[$name])) {
+            $schema_file = self::$directory."/{$name}.json";
+            self::$schemas[$name] = json_decode(file_get_contents($schema_file), true);
+            self::$schemas[$name]['$ref'] = $schema_file;
+        }
+        $schema = self::$schemas[$name];
+
+        $references = array();
+        if (!empty($schema['properties'])) {
+            $keys = array_keys((array) $data);
+            $values = array_map(function ($key, $value) use ($schema, &$references) {
+                if (is_object($value) || is_array($value)) {
+                    if (!empty($schema['properties'][$key])
+                        && !empty($schema['properties'][$key]['$ref'])
+                    ) {
+                        $name = basename($schema['properties'][$key]['$ref'], '.json');
+                        $references[$name] = $value;
+
+                        return;
+                    }
+                    $value = json_encode($value);
+                }
+
+                return self::$pdo->quote($value);
+            }, $keys, (array) $data);
+            $data = array_filter(array_combine($keys, $values));
+        }
+
+        self::$validator->check($data, $schema);
+
+        if (!self::$validator->isValid()) {
+            http_response_code(406);
+            header('Content-Type: application/json');
+            exit(json_encode(self::$validator->getErrors(), JSON_PRETTY_PRINT));
+        }
+
+        return array(
+            'data' => $data,
+            'references' => $references,
+        );
     }
 }

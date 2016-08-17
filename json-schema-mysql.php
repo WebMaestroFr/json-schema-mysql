@@ -7,6 +7,7 @@
  *
  * @author Étienne BAUDRY  <etienne@webmaestro.fr>
  */
+ require_once 'json-schema-crud.php';
 
 // Check if shell arguments are given
 if (!empty($argv) && count($argv) === 5) {
@@ -119,7 +120,7 @@ class JSON_Schema_MySQL
             // Deep conversion to object
             $property = json_decode(json_encode($property));
             // Check if reference
-            if ($this->create_reference($table_name, $name, $property)) {
+            if ($this->create_reference($table_name, $property)) {
                 // All sorted out, next !
                 return;
             }
@@ -159,28 +160,12 @@ class JSON_Schema_MySQL
         }, array_keys((array) $properties), (array) $properties));
     }
 
-    private function create_reference($table, $name, $property)
+    private function create_reference($table, $property)
     {
         // Check for reference
-        if (property_exists($property, '$ref')
-            && ((filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)
-                    // Default name is file basename
-                    && ($name = basename($property->{'$ref'}, '.json'))
-                    // If remote, fetch raw URL
-                    && ($json = file_get_contents($property->{'$ref'}))
-                ) || (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'}, $matches)
-                    // Default name is file basename
-                    && ($name = $matches[1])
-                    // If local file, fetch relative from dirname
-                    && ($file = "{$this->dirname}/{$property->{'$ref'}}")
-                    && (file_exists($file))
-                    && ($json = file_get_contents($file))
-                ))
-        ) {
-            // Decode JSON
-            $ref = json_decode($json);
+        if ($schema = self::get_reference($property)) {
             // Merge properties, current > fetched
-            $schema = self::merge_recursive_distinct($ref, $property);
+            $name = basename($property->{'$ref'}, '.json');
             // Create fetched object table (recursive)
             $this->create_table($schema, $name);
             // Record SQL relation table
@@ -229,6 +214,26 @@ class JSON_Schema_MySQL
         }
         // Return text by default
         return 'TEXT';
+    }
+
+    private static function get_reference($property)
+    {
+        if (property_exists($property, '$ref')) {
+            if (filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)) {
+                $file = $property->{'$ref'};
+            } elseif (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'})) {
+                $file = "{$this->dirname}/{$property->{'$ref'}}";
+            } else {
+                return;
+            }
+            if ($json = @file_get_contents($file)) {
+                $ref = json_decode($json);
+
+                return self::merge_recursive_distinct($ref, $property);
+            }
+        }
+
+        return;
     }
 
     private function get_comment(stdClass $schema)

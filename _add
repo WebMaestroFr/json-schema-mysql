@@ -1,0 +1,6 @@
+#!/bin/bash
+cd "$(dirname "$0")"
+read -p "URL to the GitHub repository : " repository
+FOLDER="$(basename $repository)"
+echo "> git submodule add module"
+git submodule add $repository ./${FOLDER//[^a-zA-Z0-9\-]/}
