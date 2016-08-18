@@ -25,9 +25,9 @@ class JSON_Schema_MySQL
 {
     private $pdo,
         // Record of relations between tables
-        $references = array(),
-        // Record of file path
-        $dirname = '';
+        $references = array();
+
+    private static $dirname = '';
 
     public function __construct($pdo)
     {
@@ -38,7 +38,6 @@ class JSON_Schema_MySQL
     public function create_tables_from_dir($directory)
     {
         if (is_dir($directory)) {
-            // $this->dirname = dirname($directory);
             $schema_files = glob(rtrim($directory, '/').'/*.json');
             foreach ($schema_files as $file) {
                 // Create MySQL table (if not exists)
@@ -53,7 +52,7 @@ class JSON_Schema_MySQL
             // Default name to file basename
             $name = basename($file, '.json');
         }
-        $this->dirname = dirname($file);
+        self::$dirname = dirname($file);
         // Check file
         if (file_exists($file)
             // Get JSON string
@@ -108,7 +107,7 @@ class JSON_Schema_MySQL
         $default_required = array_keys($default_properties);
         $required = property_exists($schema, 'required')
             // Merge required
-            ? array_merge($default_required, $schema->required)
+            ? array_merge($default_required, (array) $schema->required)
             : $default_required;
 
         // Return map of each property (column)
@@ -222,7 +221,7 @@ class JSON_Schema_MySQL
             if (filter_var($property->{'$ref'}, FILTER_VALIDATE_URL)) {
                 $file = $property->{'$ref'};
             } elseif (preg_match('/^([^\.]+)\.json$/', $property->{'$ref'})) {
-                $file = "{$this->dirname}/{$property->{'$ref'}}";
+                $file = self::$dirname."/{$property->{'$ref'}}";
             } else {
                 return;
             }
