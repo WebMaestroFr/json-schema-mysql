@@ -1,5 +1,5 @@
 {
-    "name": "bumip/json-schema-mysql",
+    "name": "bumip/json-schema-sql",
     "description": "Helper for converting json-schemas to sql create table statement",
     "type": "library",
     "require": {

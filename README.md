@@ -1,4 +1,4 @@
-# JSON Schema to MySQL Tables
+# JSON Schema to SQL Tables
 
 This class converts a json-schema to a valid Sql table. Tested with MySql and Sqlite.  A big shoutout to [@WebMaestroFr](https://github.com/WebMaestroFr) for this helper.  
 
