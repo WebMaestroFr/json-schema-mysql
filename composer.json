@@ -3,6 +3,7 @@
     "description": "Helper for converting json-schemas to sql create table statement",
     "type": "library",
     "require": {
+        "php": "^7.2",
         "justinrainbow/json-schema": "^5.0@dev"
     },
     "license": "MIT",
