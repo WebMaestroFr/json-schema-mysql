@@ -1,26 +1,28 @@
 # JSON Schema to MySQL Tables
 
-## Shell
-`php -q /path/to/json-schema-mysql/json-schema-mysql.php "mysql:dbname=example;host=localhost;port=3306" "user" "password" "/path/to/json/schema/directory"`
+This class converts a json-schema to a valid Sql table. Tested with MySql and Sqlite.  A big shoutout to @WebMaestroFr fo this helper.  
 
 ## PHP
+The php version is getting tested. Delete tests/database/dbtest.db to start testing  
 ```php
-require_once "path/to/json-schema-mysql/json-schema-mysql.php";
 // Instanciate PDO
-$pdo = new PDO("mysql:dbname=example;host=localhost;port=3306", "user", "password");
+$pdo = new \PDO("mysql:dbname=example;host=localhost;port=3306", "user", "password");
 // Instanciate JSON_Schema_MySQL
-$sql_schema = new JSON_Schema_MySQL($pdo);
-
-// Generate tables from all .json files in a directory
-$sql_schema->create_tables_from_dir("path/to/json/schema/directory");
+$sql_schema = new \Bumip\JsonSchema\JsonSchemaSql($pdo);
 
 // Or, generate table from a single .json file
-$sql_schema->create_table_from_file("path/to/schema.json");
+$sql_schema->createTableFromFile("path/to/schema.json");
+
+## Shell
+will be changed to a proper cli tool in the future.
+`php -q /path/to/json-schema-mysql/json-schema-mysql.php "mysql:dbname=example;host=localhost;port=3306" "user" "password" "/path/to/json/schema/directory"`
+
+
 ```
 
 # CRUD Class
 
-A CRUD class matching the DB architecture is available.
+A CRUD class matching the DB architecture is available. NOT TESTED.
 
 ```php
 require_once "path/to/json-schema-mysql/json-schema-crud.php";
