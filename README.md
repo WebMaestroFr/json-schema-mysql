@@ -1,6 +1,6 @@
 # JSON Schema to MySQL Tables
 
-This class converts a json-schema to a valid Sql table. Tested with MySql and Sqlite.  A big shoutout to @WebMaestroFr fo this helper.  
+This class converts a json-schema to a valid Sql table. Tested with MySql and Sqlite.  A big shoutout to [@WebMaestroFr] for this helper.  
 
 ## PHP
 The php version is getting tested. Delete tests/database/dbtest.db to start testing  
