@@ -20,9 +20,9 @@ will be changed to a proper cli tool in the future.
 
 ```
 
-# CRUD Class
+# CRUD Class **UNTESTED**
 
-A CRUD class matching the DB architecture is available. NOT TESTED.
+A CRUD class matching the DB architecture is available. **NOT TESTED**.
 
 ```php
 require_once "path/to/json-schema-mysql/json-schema-crud.php";
