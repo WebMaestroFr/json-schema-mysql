@@ -2,6 +2,12 @@
 
 This class converts a json-schema to a valid Sql table. Tested with MySql and Sqlite.  A big shoutout to [@WebMaestroFr](https://github.com/WebMaestroFr) for this helper.  
 
+## Installation
+Just run
+```shell
+composer require bumip/json-schema-sql dev-master
+```
+
 ## PHP
 The php version is getting tested. Delete tests/database/dbtest.db to start testing  
 ```php
